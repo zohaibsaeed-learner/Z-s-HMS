@@ -1,0 +1,10 @@
+build/
+_b/
+out/
+.vs/
+.vscode/
+*.exe
+*.o
+*.obj
+node_modules/
+.next/

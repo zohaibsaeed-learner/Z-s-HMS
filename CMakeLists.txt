@@ -15,3 +15,14 @@ add_executable(hms
 
 # Absolute path to data folder, so files are found no matter where the exe runs from
 target_compile_definitions(hms PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
+add_executable(hms_server
+    src/server.cpp
+    src/PatientList.cpp
+    src/AppointmentQueue.cpp
+    src/FileManager.cpp
+)
+target_compile_definitions(hms_server PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
+if(WIN32)
+    target_link_libraries(hms_server PRIVATE ws2_32)
+    target_compile_definitions(hms_server PRIVATE _WIN32_WINNT=0x0A00)
+endif()
