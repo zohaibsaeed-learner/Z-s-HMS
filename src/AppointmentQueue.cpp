@@ -18,9 +18,10 @@ static void printApptHeader() {
          << setw(10) << "Patient"
          << setw(13) << "Date"
          << setw(8)  << "Time"
-         << setw(20) << "Doctor"
+         << setw(18) << "Doctor"
+         << setw(10) << "Priority"
          << setw(12) << "Status" << "\n";
-    cout << string(71, '-') << "\n";
+    cout << string(79, '-') << "\n";
 }
 
 static void printApptRow(const Appointment* a) {
@@ -29,7 +30,8 @@ static void printApptRow(const Appointment* a) {
          << setw(10) << a->patientId
          << setw(13) << a->date
          << setw(8)  << a->time
-         << setw(20) << a->doctor
+         << setw(18) << a->doctor
+         << setw(10) << AppointmentQueue::priorityToString(a->priority)
          << setw(12) << AppointmentQueue::statusToString(a->status) << "\n";
 }
 
@@ -84,6 +86,19 @@ bool AppointmentQueue::stringToStatus(const string& str, ApptStatus& out) {
     return false;
 }
 
+string AppointmentQueue::priorityToString(Priority p) {
+    if (p == CRITICAL) return "Critical";
+    if (p == URGENT)   return "Urgent";
+    return "Normal";
+}
+
+bool AppointmentQueue::stringToPriority(const string& str, Priority& out) {
+    if (str == "Critical") { out = CRITICAL; return true; }
+    if (str == "Urgent")   { out = URGENT;   return true; }
+    if (str == "Normal")   { out = NORMAL;   return true; }
+    return false;
+}
+
 // ---------- Helpers ----------
 Appointment* AppointmentQueue::findById(int id) const {
     Appointment* cur = front;
@@ -102,7 +117,8 @@ string AppointmentQueue::sortKey(const Appointment* a) {
 
 // ---------- Queue operations ----------
 bool AppointmentQueue::enqueue(int patientId, const string& date, const string& time,
-                               const string& doctor, const PatientList& patients) {
+                               const string& doctor, const PatientList& patients,
+                               Priority priority) {
     if (!patients.exists(patientId)) {
         cout << "Error: Patient ID " << patientId << " does not exist. Register the patient first.\n";
         return false;
@@ -138,23 +154,27 @@ bool AppointmentQueue::enqueue(int patientId, const string& date, const string& 
     node->time = time;
     node->doctor = doctor;
     node->status = SCHEDULED;
+    node->priority = priority;
     node->next = nullptr;
 
+    // Linked list keeps arrival order (the record of every booking).
     if (rear == nullptr) {
         front = rear = node;
     } else {
         rear->next = node;
         rear = node;
     }
+    pq.push(node);          // heap decides the SERVING order
     total++;
-    cout << "Appointment #" << node->id << " booked for patient " << patientId << ".\n";
+    cout << "Appointment #" << node->id << " booked for patient " << patientId
+         << " [" << priorityToString(priority) << "].\n";
     return true;
 }
 
 bool AppointmentQueue::processNext() {
-    Appointment* cur = front;
-    while (cur != nullptr && cur->status != SCHEDULED)
-        cur = cur->next;
+    // The emergency priority queue decides who is seen next:
+    // Critical before Urgent before Normal; equal levels in arrival order.
+    Appointment* cur = pq.pop();
     if (cur == nullptr) {
         cout << "No scheduled appointments in the queue.\n";
         return false;
@@ -162,7 +182,7 @@ bool AppointmentQueue::processNext() {
     cur->status = COMPLETED;
     cout << "Processed appointment #" << cur->id << " (Patient " << cur->patientId
          << ", Dr. " << cur->doctor << ", " << cur->date << " " << cur->time
-         << ") -> Completed.\n";
+         << ", " << priorityToString(cur->priority) << ") -> Completed.\n";
     return true;
 }
 
@@ -177,7 +197,7 @@ bool AppointmentQueue::cancel(int apptId) {
              << statusToString(a->status) << " and cannot be cancelled.\n";
         return false;
     }
-    a->status = CANCELLED;
+    a->status = CANCELLED;      // heap skips it lazily when it reaches the top
     cout << "Appointment #" << apptId << " cancelled.\n";
     return true;
 }
@@ -196,7 +216,8 @@ int AppointmentQueue::cancelAllForPatient(int patientId) {
 }
 
 void AppointmentQueue::addLoaded(int id, int patientId, const string& date,
-                                 const string& time, const string& doctor, ApptStatus status) {
+                                 const string& time, const string& doctor,
+                                 ApptStatus status, Priority priority) {
     Appointment* node = new Appointment();
     node->id = id;
     node->patientId = patientId;
@@ -204,6 +225,7 @@ void AppointmentQueue::addLoaded(int id, int patientId, const string& date,
     node->time = time;
     node->doctor = doctor;
     node->status = status;
+    node->priority = priority;
     node->next = nullptr;
     if (rear == nullptr) {
         front = rear = node;
@@ -211,6 +233,7 @@ void AppointmentQueue::addLoaded(int id, int patientId, const string& date,
         rear->next = node;
         rear = node;
     }
+    if (status == SCHEDULED) pq.push(node);   // rebuild the heap from saved data
     total++;
     if (id >= nextId) nextId = id + 1;
 }
@@ -284,6 +307,27 @@ void AppointmentQueue::displaySortedByDateTime() const {
     printApptHeader();
     for (size_t i = 0; i < arr.size(); i++)
         printApptRow(arr[i]);
+}
+
+// Shows the exact order the emergency priority queue would serve patients,
+// without disturbing the real queue (uses a temporary heap).
+void AppointmentQueue::displayPriorityOrder() {
+    PriorityQueue temp;
+    for (Appointment* cur = front; cur != nullptr; cur = cur->next)
+        if (cur->status == SCHEDULED) temp.push(cur);
+
+    if (temp.peek() == nullptr) {
+        cout << "No scheduled appointments waiting.\n";
+        return;
+    }
+    cout << "\nEmergency queue - order in which patients will be served:\n";
+    printApptHeader();
+    int pos = 1;
+    Appointment* a;
+    while ((a = temp.pop()) != nullptr) {
+        cout << setw(3) << pos++ << ") ";
+        printApptRow(a);
+    }
 }
 
 int AppointmentQueue::pendingCount() const {

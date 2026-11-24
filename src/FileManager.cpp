@@ -43,7 +43,8 @@ bool FileManager::saveAppointments(const AppointmentQueue& queue) {
     }
     for (Appointment* a = queue.getFront(); a != nullptr; a = a->next) {
         out << a->id << '|' << a->patientId << '|' << a->date << '|' << a->time << '|'
-            << a->doctor << '|' << AppointmentQueue::statusToString(a->status) << '\n';
+            << a->doctor << '|' << AppointmentQueue::statusToString(a->status) << '|'
+            << AppointmentQueue::priorityToString(a->priority) << '\n';
     }
     return true;
 }
@@ -87,15 +88,20 @@ int FileManager::loadAppointments(AppointmentQueue& queue) {
 
         vector<string> f = split(line, '|');
         ApptStatus status;
-        if (f.size() != 6 || !AppointmentQueue::stringToStatus(f[5], status) ||
+        // 6 fields = old file (no priority) -> default Normal. 7 fields = new file.
+        if ((f.size() != 6 && f.size() != 7) ||
+            !AppointmentQueue::stringToStatus(f[5], status) ||
             !AppointmentQueue::validDate(f[2]) || !AppointmentQueue::validTime(f[3])) {
             cout << "Warning: skipped corrupt appointment line: " << line << "\n";
             continue;
         }
+        Priority priority = NORMAL;
+        if (f.size() == 7 && !AppointmentQueue::stringToPriority(f[6], priority))
+            priority = NORMAL;      // unknown label falls back to Normal
         try {
             int id = stoi(f[0]);
             int pid = stoi(f[1]);
-            queue.addLoaded(id, pid, f[2], f[3], f[4], status);
+            queue.addLoaded(id, pid, f[2], f[3], f[4], status, priority);
             loaded++;
         } catch (...) {
             cout << "Warning: skipped corrupt appointment line: " << line << "\n";

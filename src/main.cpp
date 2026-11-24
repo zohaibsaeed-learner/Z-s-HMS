@@ -7,6 +7,25 @@
 
 using namespace std;
 
+static void saveAll();   // forward declaration (defined after the globals)
+
+// ---------- Screen helpers ----------
+static void clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
+
+// Hold the screen so the result of an action is actually read before the
+// menu redraws. Waits for the user to press Enter.
+static void pauseEnter() {
+    cout << "\nPress Enter to continue...";
+    string tmp;
+    getline(cin, tmp);
+}
+
 // ---------- Input helpers ----------
 static string trim(const string& s) {
     size_t a = s.find_first_not_of(" \t\r\n");
@@ -20,7 +39,11 @@ static string readText(const string& prompt, bool allowBlank = false) {
     while (true) {
         cout << prompt;
         string s;
-        if (!getline(cin, s)) exit(0);
+        if (!getline(cin, s)) {                 // Ctrl+Z / Ctrl+D / end of input
+            cout << "\nInput ended. Saving and exiting...\n";
+            saveAll();
+            exit(0);
+        }
         for (size_t i = 0; i < s.size(); i++)
             if (s[i] == '|') s[i] = ' ';
         s = trim(s);
@@ -51,6 +74,15 @@ static int readInt(const string& prompt) {
 static char readGender(const string& prompt) {
     string s = readText(prompt);
     return s.size() == 1 ? s[0] : '?';      // '?' fails validation
+}
+
+// Triage level for the emergency priority queue.
+static Priority readPriority() {
+    cout << "Priority:  1) Normal   2) Urgent   3) Critical (ICU)\n";
+    int c = readInt("Choice [1-3]: ");
+    if (c == 3) return CRITICAL;
+    if (c == 2) return URGENT;
+    return NORMAL;      // default / invalid -> Normal
 }
 
 // ---------- Globals ----------
@@ -106,22 +138,36 @@ static void updatePatient() {
     PatientList::printRow(p);
     cout << "(Press Enter to keep the current value)\n";
 
+    // Each field is validated on the spot and re-prompted if wrong, so one
+    // bad entry never throws away the values already typed.
     string name = readText("New name: ", true);
     if (name.empty()) name = p->name;
 
     int age = p->age;
-    string ageStr = readText("New age: ", true);
-    if (!ageStr.empty() && !tryParseInt(ageStr, age)) {
-        cout << "Error: Age must be a whole number. Update cancelled.\n";
-        return;
+    while (true) {
+        string s = readText("New age: ", true);
+        if (s.empty()) break;                           // keep current
+        int v;
+        if (tryParseInt(s, v) && PatientList::validAge(v)) { age = v; break; }
+        cout << "Age must be a whole number between 0 and 120. Try again.\n";
     }
 
     char gender = p->gender;
-    string gStr = readText("New gender (M/F/O): ", true);
-    if (!gStr.empty()) gender = (gStr.size() == 1) ? gStr[0] : '?';
+    while (true) {
+        string s = readText("New gender (M/F/O): ", true);
+        if (s.empty()) break;
+        char g = (s.size() == 1) ? s[0] : '?';
+        if (PatientList::validGender(g)) { gender = g; break; }
+        cout << "Gender must be M, F or O. Try again.\n";
+    }
 
-    string contact = readText("New contact: ", true);
-    if (contact.empty()) contact = p->contact;
+    string contact = p->contact;
+    while (true) {
+        string s = readText("New contact: ", true);
+        if (s.empty()) break;
+        if (PatientList::validContact(s)) { contact = s; break; }
+        cout << "Contact must be 10 to 15 digits. Try again.\n";
+    }
 
     string disease = readText("New disease: ", true);
     if (disease.empty()) disease = p->disease;
@@ -163,7 +209,8 @@ static void bookAppointment() {
     string date = readText("Date (DD-MM-YYYY): ");
     string time = readText("Time (HH:MM, 24h): ");
     string doctor = readText("Doctor name: ");
-    if (appointments.enqueue(pid, date, time, doctor, patients))
+    Priority pr = readPriority();
+    if (appointments.enqueue(pid, date, time, doctor, patients, pr))
         saveAll();
 }
 
@@ -196,10 +243,11 @@ static void showMenu() {
          << "  5. Update patient            6. Delete patient\n"
          << "  7. Sort patients\n"
          << " APPOINTMENTS\n"
-         << "  8. Book appointment          9. Process next (FIFO)\n"
+         << "  8. Book appointment          9. Process next (priority)\n"
          << " 10. Cancel appointment       11. View all appointments\n"
          << " 12. View by status           13. View sorted by date/time\n"
          << " 14. View a patient's appointments\n"
+         << " 15. View emergency queue (serving order)\n"
          << "  0. Save and exit\n"
          << "==================================================\n";
 }
@@ -208,9 +256,11 @@ int main() {
     int np = FileManager::loadPatients(patients);
     int na = FileManager::loadAppointments(appointments);
     cout << "Loaded " << np << " patient(s) and " << na << " appointment(s) from file.\n";
+    pauseEnter();
 
     int choice;
     do {
+        clearScreen();
         showMenu();
         choice = readInt("Enter choice: ");
         switch (choice) {
@@ -228,9 +278,11 @@ int main() {
             case 12: viewByStatusMenu(); break;
             case 13: appointments.displaySortedByDateTime(); break;
             case 14: appointments.displayByPatient(readInt("Patient ID: ")); break;
+            case 15: appointments.displayPriorityOrder(); break;
             case 0:  saveAll(); cout << "Data saved. Goodbye!\n"; break;
-            default: cout << "Invalid choice. Try again.\n";
+            default: cout << "Invalid choice. Please pick a number from the menu.\n";
         }
+        if (choice != 0) pauseEnter();   // let the result stay on screen
     } while (choice != 0);
 
     return 0;

@@ -10,6 +10,7 @@ add_executable(hms
     src/main.cpp
     src/PatientList.cpp
     src/AppointmentQueue.cpp
+    src/PriorityQueue.cpp
     src/FileManager.cpp
 )
 
@@ -19,6 +20,7 @@ add_executable(hms_server
     src/server.cpp
     src/PatientList.cpp
     src/AppointmentQueue.cpp
+    src/PriorityQueue.cpp
     src/FileManager.cpp
 )
 target_compile_definitions(hms_server PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/data/")
