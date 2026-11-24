@@ -89,7 +89,8 @@ static string appointmentsJson() {
         j += "{\"id\":" + to_string(a->id) + ",\"patientId\":" + to_string(a->patientId) +
              ",\"date\":\"" + a->date + "\",\"time\":\"" + a->time +
              "\",\"doctor\":\"" + esc(a->doctor) + "\",\"status\":\"" +
-             AppointmentQueue::statusToString(a->status) + "\"}";
+             AppointmentQueue::statusToString(a->status) + "\",\"priority\":\"" +
+             AppointmentQueue::priorityToString(a->priority) + "\"}";
     }
     return j + "]";
 }
@@ -174,10 +175,12 @@ int main() {
     svr.Post("/api/appointments", [](const httplib::Request& req, httplib::Response& res) {
         lock_guard<mutex> lk(mtx);
         bool ok;
+        Priority pr = NORMAL;
+        AppointmentQueue::stringToPriority(clean(req.get_param_value("priority")), pr);
         string msg = capture([&] {
             return appointments.enqueue(toInt(req.get_param_value("patientId")),
                 clean(req.get_param_value("date")), clean(req.get_param_value("time")),
-                clean(req.get_param_value("doctor")), patients);
+                clean(req.get_param_value("doctor")), patients, pr);
         }, ok);
         if (ok) saveAll();
         reply(res, ok, msg);

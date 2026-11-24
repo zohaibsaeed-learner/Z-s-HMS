@@ -1,34 +1,62 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./ui";
+import { useApp } from "./Providers";
 
-export default function Toast({ msg, onDone }) {
+function ToastItem({ toast, onDone }) {
+  const [paused, setPaused] = useState(false);
+  const left = useRef(4000);
+  const start = useRef(0);
+  const raf = useRef(0);
+
   useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(onDone, 4000);
-    return () => clearTimeout(t);
-  }, [msg, onDone]);
+    function loop(t) {
+      if (!start.current) start.current = t;
+      if (!paused) {
+        left.current -= t - start.current;
+        start.current = t;
+        if (left.current <= 0) { onDone(); return; }
+      } else {
+        start.current = t;
+      }
+      raf.current = requestAnimationFrame(loop);
+    }
+    raf.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf.current);
+  }, [paused, onDone]);
 
-  if (!msg) return null;
-  const ok = msg.ok;
-
+  const ok = toast.ok;
   return (
-    <div className="fixed right-6 top-6 z-50 flex w-full max-w-sm items-start gap-3 overflow-hidden rounded-xl border border-line bg-white p-4 shadow-xl">
-      <div className={`absolute inset-y-0 left-0 w-1.5 ${ok ? "bg-emerald-600" : "bg-brand"}`} />
-      <div
-        className={`ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-          ok ? "bg-emerald-50 text-emerald-700" : "bg-blush text-brand"
-        }`}
-      >
-        <Icon name={ok ? "check" : "alert"} />
-      </div>
+    <div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      role="status"
+      className="glass pointer-events-auto flex w-80 items-start gap-3 overflow-hidden rounded-[4px] border border-line p-3 animate-[hms-modal-in_.18s_var(--ease)]"
+      style={{ boxShadow: "0 12px 40px -12px rgba(23,24,26,.35)" }}>
+      <span className={`absolute left-0 top-0 h-full w-1 ${ok ? "bg-muted" : "bg-brand"}`} />
+      <span className={`ml-1 mt-0.5 ${ok ? "text-muted" : "text-brand"}`}>
+        <Icon name={ok ? "check" : "alert"} size={16} />
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold">{ok ? "Success" : "Action not completed"}</div>
-        <div className="mt-0.5 whitespace-pre-line text-sm text-muted">{msg.text}</div>
+        <div className="text-[13px] font-semibold">{ok ? "Done" : "Not completed"}</div>
+        <div className="mt-0.5 whitespace-pre-line break-words text-[13px] text-muted">{toast.message}</div>
       </div>
-      <button onClick={onDone} className="rounded p-1 text-muted hover:bg-mist">
-        <Icon name="x" size={16} />
+      <button onClick={onDone} aria-label="Dismiss" className="rounded-[4px] p-0.5 text-muted transition-colors hover:bg-blush hover:text-brand">
+        <Icon name="x" size={14} />
       </button>
+    </div>
+  );
+}
+
+export default function ToastStack() {
+  const { toasts, dismiss } = useApp();
+  return (
+    <div className="pointer-events-none fixed bottom-4 right-4 z-[90] flex flex-col gap-2">
+      {toasts.map((t) => (
+        <div key={t.id} className="relative">
+          <ToastItem toast={t} onDone={() => dismiss(t.id)} />
+        </div>
+      ))}
     </div>
   );
 }
